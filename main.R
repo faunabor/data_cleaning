@@ -24,12 +24,37 @@ boo <- remove_duplicate_rows(collar_data = boo)
 ## 1) multiple return intervals over their collared lifespan
 ## 2) a return interval that cycles over a daily period and starts at any time
 ##    other than at 0:00.
-boo <- remove_off_time_locations(collar_data = boo, offset_value = 180)
+bbak <- boo
+boo <- bbak
+boo <- remove_off_time_locations(collar_data = boo, offset_value = 99999, keep_extra_fields = T)
+
+# Remove any duplicate locations (select the most recent over older ones)
+## show distribution of offset_values
+library(ggplot2)
+ggplot(filter(boo, Animal.Id == "BWCA-WL-17-01"), aes(x = Date, y = offset)) +
+  geom_point()
+ggplot(filter(boo, Animal.Id == "BWCA-WL-17-01"), aes(x = Longitude, y = Latitude)) +
+  geom_point(aes(size = offset > 500, colour = offset > 500))
+
+## are there any duplicate locations?
+dup_locs <- boo %>%
+  group_by(Animal.Id, Latitude, Longitude) %>%
+  summarize(number = n()) %>%
+  filter(number > 1)
+length(unique(dup_locs$Animal.Id))
+
+## Yes.
+
+## Investiage an example or two
+bbak <- boo
+boo <- droplevels(filter(boo, Animal.Id %in% dup_locs$Animal.Id))
+boo <- droplevels(filter(boo, Animal.Id == "BWCA-WL-17-02"))
 
 
 
 
-#
+
+# Remove any duplicate time, different locations
 
 # Add coordinates in canada albers equal area conic projection (default, can
 # be changed).

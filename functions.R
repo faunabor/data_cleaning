@@ -68,7 +68,7 @@ remove_duplicate_rows <- function(collar_data){
   return(temp)
 }
 
-remove_off_time_locations <- function(collar_data, offset_value){
+remove_off_time_locations <- function(collar_data, offset_value, keep_extra_fields = F){
   # Determine the on time locations (Won't capture points that return at the
   # mid-point of the day). Needs some more work.
   # Currently assumes any point schedule starts at 0:00. Not necessarily true.
@@ -139,7 +139,13 @@ remove_off_time_locations <- function(collar_data, offset_value){
   temp <- temp[temp$offset < offset_value,]
   temp <- droplevels(temp)
   
-  return(temp)
+  if (!keep_extra_fields){
+    temp <- select(temp, -c(mode, sec_from_midnight, offset))
+    return(temp)
+  }
+  if (keep_extra_fields){
+    return(temp)
+  }
 }
 
 add_projected_coordinates <- function(collar_data, coordinate_reference = "+proj=aea +lat_1=50 +lat_2=70 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"){
