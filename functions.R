@@ -1,6 +1,6 @@
 # Functions
 
-read_in <- function(in_data, raw = T, pattern = NULL){
+read_in_and_parse_dates <- function(in_data, raw = T){
   # FCT import and clean All_Collared_Animal_Locations
   # This function reads in collar data drawn from the BI launch pad report
   # "All_Collared_Animal_Locations", based on the default selection of checks
@@ -9,6 +9,8 @@ read_in <- function(in_data, raw = T, pattern = NULL){
   library(lubridate)
   library(stringr)
   library(sp)
+  
+
   
   if (raw){
     # Read in data (assumes hasn't been opened in excel, and the top three empty rows
@@ -33,42 +35,36 @@ read_in <- function(in_data, raw = T, pattern = NULL){
     temp$Date <- mdy_hms(temp$TXT.Date) # MAY BE INCORRECT GOING FROM MEMORY HERE.
   }
   
+  return(temp)
+}
+
+filter_dataset_to_id_naming_pattern <- function(collar_data, Animal_Id_pattern = NULL){
+  temp <- collar_data
+  # Filter to the specified naming pattern if provided.
+  if (!is.null(Animal_Id_pattern)){
+    temp <- temp[str_detect(string = temp$Animal.Id, pattern = Animal_Id_pattern),]
+    temp <- droplevels(temp)
+  }
+  return(temp)
+}
+
+remove_bad_location_class <- function(collar_data){
+  temp <- collar_data
   # Parse out the bad Location.Class from API data
   temp1 <- temp[temp$Dataset == "Api Data" & temp$Location.Class == "G",]
   temp <- temp[!(temp$Dataset == "Api Data"),]
   temp <- bind_rows(temp, temp1)
-  rm(temp1)
-  
-  # Filter to the specified naming pattern if provided.
-  if (!is.null(pattern)){
-    temp <- temp[str_detect(string = temp$Animal.Id, pattern = pattern),]
-    temp <- droplevels(temp)
-  }
-  
-  
-  # Sort by Animal.Id and Date
-  temp <- temp %>%
-    group_by(Animal.Id) %>%
-    arrange(Date, .by_group = T)
-  # remove extra classes just in case
-  temp <- as.data.frame(temp)
-  
-  
-  # Add a field for the lat longs that are in Canada Albers Equal Area Conic
-  tempSP <- SpatialPoints(coords = temp[,c("Longitude", "Latitude")],
-                          proj4string = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
-  tempSP <- spTransform(x = tempSP, 
-                        CRSobj = CRS("+proj=aea +lat_1=50 +lat_2=70 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"))
-  temp$LongitudeCAEAC <- tempSP@coords[,"Longitude"]
-  temp$LatitudeCAEAC <- tempSP@coords[,"Latitude"]
-  
-  
+  temp <- droplevels(temp)
+  return(temp)
+}
+
+remove_duplicate_rows <- function(collar_data){
+  temp <- collar_data
   # remove duplicates
   ## remove full row duplicates
   temp <- temp[!duplicated(temp),]
   ## remove duplicates of subset of fields (Animal.Id, Latitude, Longitude, TXT.Date)
-  temp <- temp[!duplicated(temp[,c("Animal.Id", "LatitudeCAEAC", "LongitudeCAEAC", "Date")]),]
-  
+  temp <- temp[!duplicated(temp[,c("Animal.Id", "Latitude", "Longitude", "Date")]),]
   return(temp)
 }
 
@@ -125,6 +121,9 @@ remove_off_time_locations <- function(collar_data, offset_value){
       summarise(mode = getMode(nday)) %>%
       mutate(mode = 86400 / mode) %>%
       left_join(collar_data, ., by = "Animal.Id")
+    temp2 <- temp %>%
+      group_by(Animal.Id, date = date(Date)) %>%
+      summarize()
     return(temp)
   }
   temp <- get_return_interval(collar_data = collar_data)
@@ -143,43 +142,48 @@ remove_off_time_locations <- function(collar_data, offset_value){
   return(temp)
 }
 
-add_projected_coordinates <- function(collar_data){
+add_projected_coordinates <- function(collar_data, coordinate_reference = "+proj=aea +lat_1=50 +lat_2=70 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"){
+  # Defaults to Canada Albers Equal Area Conic
   library(tidyverse)
   library(sp)
   
   temp <- collar_data
   
-  # Add a field for the lat longs that are in Canada Albers Equal Area Conic
+  # Add fields for the x and y coordinates that are in the projected coordinate system provided.
   tempSP <- SpatialPoints(coords = temp[,c("Longitude", "Latitude")],
                           proj4string = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
   tempSP <- spTransform(x = tempSP, 
-                        CRSobj = CRS("+proj=aea +lat_1=50 +lat_2=70 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"))
-  temp$LongitudeCAEAC <- tempSP@coords[,"Longitude"]
-  temp$LatitudeCAEAC <- tempSP@coords[,"Latitude"]
+                        CRSobj = CRS(coordinate_reference))
+  temp$LongitudeProj <- tempSP@coords[,"Longitude"]
+  temp$Latitude <- tempSP@coords[,"Latitude"]
   
   return(temp)
 }
 
-get_trajectory_stats <- function(collar_data){
+create_trajectory <- function(collar_data, output = "dataframe"){
   # Get basic movement stats for the dataset
   # Assumes coordinates coming in from CAEAC.
-  ## need to identify bursts in the dataset. Talk to Ashley about the programming,
-  ## or investigate the dataset to figure out what the programmed returns were. Did
-  ## they change over time for any one animal?
   library(tidyverse)
   library(adehabitatLT)
   temp <- collar_data
   temp <- temp %>%
     group_by(Animal.Id) %>%
-    arrange(Animal.Id, Date) # CHANGE THIS (why?)
-  temp <- SpatialPointsDataFrame(coords = temp[,c("LongitudeCAEAC", "LatitudeCAEAC")],
+    arrange(Date, .by_group = T)
+  temp <- SpatialPointsDataFrame(coords = temp[,c("LongitudeProj", "LatitudeProj")],
                                  proj4string = CRS("+proj=aea +lat_1=50 +lat_2=70 +lat_0=40 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"),
                                  data = temp)
   temp_LT <- as.ltraj(xy = coordinates(temp[,c("LongitudeCAEAC", "LatitudeCAEAC")]), date = temp$Date, id = temp$Animal.Id, burst = temp$Animal.Id)
-  return(temp_LT)
+  
+  # Return either an ltraj object or the dataframe version of the output.
+  if (output == "ltraj"){
+    return(temp_LT)
+  }
+  if (output == "dataframe"){
+    return(ld(temp_LT))
+  }
 }
 
-detect_large_movements_and_spikes <- function(collar_data, medcrit=100000, meancrit=10000, spikesp=1500, spikecos=(-0.97)){
+remove_large_movements_and_spikes <- function(collar_data, medcrit=100000, meancrit=10000, spikesp=1500, spikecos=(-0.97)){
   # Screen out large movments and spikes (WIP)
   ## From: Bjørneraas, K., Van Moorter, B., Rolandsen, C. M. & Herfindal, I.
   ## Screening Global Positioning System Location Data for Errors Using Animal
