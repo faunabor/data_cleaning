@@ -161,7 +161,7 @@ add_projected_coordinates <- function(collar_data, coordinate_reference = "+proj
   tempSP <- spTransform(x = tempSP, 
                         CRSobj = CRS(coordinate_reference))
   temp$LongitudeProj <- tempSP@coords[,"Longitude"]
-  temp$Latitude <- tempSP@coords[,"Latitude"]
+  temp$LatitudeProj <- tempSP@coords[,"Latitude"]
   
   return(temp)
 }

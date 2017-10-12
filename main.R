@@ -52,8 +52,6 @@ boo <- droplevels(filter(boo, Animal.Id == "BWCA-WL-17-02"))
 
 
 
-
-
 # Remove any duplicate time, different locations
 
 # Add coordinates in canada albers equal area conic projection (default, can
