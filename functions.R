@@ -1,18 +1,17 @@
 # Functions
 
-read_in_and_parse_dates <- function(in_data, raw = T){
+read_in_and_parse_dates <- function(in_data, raw_format = T){
   # FCT import and clean All_Collared_Animal_Locations
   # This function reads in collar data drawn from the BI launch pad report
   # "All_Collared_Animal_Locations", based on the default selection of checks
   # in the report.
   library(tidyverse)
   library(lubridate)
-  library(stringr)
-  library(sp)
+  
   
 
   
-  if (raw){
+  if (raw_format){
     # Read in data (assumes hasn't been opened in excel, and the top three empty rows
     # are still present).
     headers = read.csv(in_data, skip = 3, header = F, nrows = 1, as.is = T)
